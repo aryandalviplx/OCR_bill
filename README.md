@@ -123,18 +123,21 @@ cp .env.example .env
 ### Required: Document AI Setup
 
 1. Enable the Document AI API in your Google Cloud project
-2. Create a Document AI processor (OCR or Form Parser):
+2. Create a Document AI processor:
    - Go to https://console.cloud.google.com/ai/document-ai/processors
-   - Create a new processor (recommended: "Document OCR" or "Invoice Parser")
-   - Note the processor ID
+   - Create a new processor:
+     - **Document OCR**: General text extraction (recommended for starting)
+     - **Invoice Parser**: Pre-trained for invoices with entity extraction
+     - **Form Parser**: For structured forms
+   - Note the processor ID from the processor details page
 
 3. Set the required environment variables:
 
 ```env
 # Required: Document AI Configuration
 DOCUMENT_AI_PROJECT_ID=your-gcp-project-id
-DOCUMENT_AI_LOCATION=us  # or 'eu'
 DOCUMENT_AI_PROCESSOR_ID=your-processor-id
+DOCUMENT_AI_LOCATION=us  # or 'eu'
 
 # Optional: Google Cloud credentials (if not using default)
 GOOGLE_APPLICATION_CREDENTIALS=/path/to/service-account-key.json
@@ -146,6 +149,11 @@ LOG_LEVEL=INFO
 ```
 
 Note: GCS links are provided directly as input - no bucket configuration needed.
+
+### Document Size Limits
+
+- **Synchronous processing**: Max 20MB per document
+- For larger documents, batch processing is required (not yet implemented)
 
 ## Usage
 
@@ -222,9 +230,35 @@ Complete audit trail of all processing steps, agent executions, and events (JSON
 ### OCR with Google Document AI
 
 The system uses **Google Document AI** for OCR extraction:
-- Supports PDF, PNG, JPG, TIFF, BMP, and other image formats
-- Extracts text with high accuracy using ML models
-- Structured data extraction uses regex patterns (for production, consider using Document AI's specialized Invoice/Receipt parsers)
+
+**Supported Formats:**
+- PDF, PNG, JPG/JPEG, TIFF, BMP, GIF, WebP
+
+**Features:**
+- High-accuracy ML-based text extraction
+- Size guard: 20MB limit for synchronous processing
+- Error handling with detailed logging
+
+**Two extraction modes:**
+
+1. **Regex-based extraction** (current default):
+   - Uses `extract_structured_bill_data()` with regex patterns
+   - Works with any Document OCR processor
+   - Good for general documents
+
+2. **Entity-based extraction** (for Invoice/Receipt processors):
+   - Uses `extract_entities_from_document()`
+   - Extracts pre-labeled fields: vendor, invoice number, line items, totals
+   - Higher accuracy for invoices/receipts
+
+**Switching to Invoice Parser:**
+```python
+# In ocr_agent.py, after getting the document:
+from utils.ocr_utils import extract_entities_from_document
+
+document = process_document_with_ai(content, mime_type)
+structured_data = extract_entities_from_document(document)  # Instead of regex
+```
 
 ### Placeholder Components
 
@@ -233,11 +267,12 @@ The system uses **Google Document AI** for OCR extraction:
 
 ### Production Considerations
 
-1. **Error Handling**: Add retry logic and circuit breakers for external service calls
+1. **Error Handling**: Document AI calls include try/catch with detailed error messages
 2. **Monitoring**: Integrate with logging/monitoring services (e.g., Cloud Logging, Prometheus)
 3. **Scaling**: Consider async processing and message queues for high-volume scenarios
 4. **Security**: Ensure service account credentials are properly secured
 5. **Performance**: Add caching for frequently accessed GCS objects
+6. **Large Documents**: Implement batch processing for documents > 20MB
 
 ## License
 
